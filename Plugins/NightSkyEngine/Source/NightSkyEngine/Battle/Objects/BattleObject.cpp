@@ -3095,29 +3095,109 @@ void ABattleObject::LinkCommonParticle(FGameplayTag Name)
 
 void ABattleObject::LinkCharaParticle(FGameplayTag Name)
 {
-	if (!GameState) return;
-	if (IsPlayer)
-		return;
-	if (Player->CharaParticleData != nullptr)
+	UE_LOG(LogTemp, Warning, TEXT("[LinkCharaParticle] Called with Tag: %s"), *Name.ToString());
+
+	if (!GameState)
 	{
-		for (FParticleStruct ParticleStruct : Player->CharaParticleData->ParticleStructs)
+		UE_LOG(LogTemp, Error, TEXT("[LinkCharaParticle] FAILED: GameState is NULL"));
+		return;
+	}
+
+	if (IsPlayer)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[LinkCharaParticle] SKIPPED: IsPlayer is true"));
+		return;
+	}
+
+	if (Player->CharaParticleData == nullptr)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[LinkCharaParticle] FAILED: Player->CharaParticleData is NULL"));
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[LinkCharaParticle] Found %d particles in CharaParticleData"),
+		Player->CharaParticleData->ParticleStructs.Num());
+
+	bool bFoundMatch = false;
+	int32 Index = 0;
+
+	for (FParticleStruct ParticleStruct : Player->CharaParticleData->ParticleStructs)
+	{
+		UE_LOG(LogTemp, Log, TEXT("[LinkCharaParticle] [%d] Checking particle: %s (System valid: %s)"),
+			Index++,
+			*ParticleStruct.Name.ToString(),
+			ParticleStruct.ParticleSystem ? TEXT("YES") : TEXT("NO"));
+
+		if (ParticleStruct.Name == Name && ParticleStruct.ParticleSystem)
 		{
-			if (ParticleStruct.Name == Name && ParticleStruct.ParticleSystem)
+			bFoundMatch = true;
+			UE_LOG(LogTemp, Warning, TEXT("[LinkCharaParticle] MATCH FOUND for tag: %s"), *Name.ToString());
+
+			if (IsValid(LinkedParticle))
 			{
-				if (IsValid(LinkedParticle))
-					LinkedParticle->Deactivate();
-				LinkedParticle = UNiagaraFunctionLibrary::SpawnSystemAttached(
-					ParticleStruct.ParticleSystem, RootComponent, FName(), FVector(), FRotator(),
-					EAttachLocation::SnapToTargetIncludingScale, true);
+				UE_LOG(LogTemp, Log, TEXT("[LinkCharaParticle] Deactivating existing LinkedParticle"));
+				LinkedParticle->Deactivate();
+			}
+
+			UE_LOG(LogTemp, Warning, TEXT("[LinkCharaParticle] Spawning particle system: %s"),
+				*ParticleStruct.ParticleSystem->GetName());
+			UE_LOG(LogTemp, Log, TEXT("[LinkCharaParticle] Spawn location: %s, Rotation: %s"),
+				*FVector().ToString(),
+				*FRotator().ToString());
+
+			LinkedParticle = UNiagaraFunctionLibrary::SpawnSystemAttached(
+				ParticleStruct.ParticleSystem, RootComponent, FName(), FVector(), FRotator(),
+				EAttachLocation::SnapToTargetIncludingScale, true);
+
+			if (LinkedParticle)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[LinkCharaParticle] ✓ Particle spawned successfully!"));
+				UE_LOG(LogTemp, Log, TEXT("[LinkCharaParticle] Component active: %s"),
+					LinkedParticle->IsActive() ? TEXT("YES") : TEXT("NO"));
+
 				LinkedParticle->SetAgeUpdateMode(ENiagaraAgeUpdateMode::DesiredAge);
 				LinkedParticle->SetDesiredAge(0);
+
 				GameState->ParticleManager->BattleParticles.Add(FBattleParticle(LinkedParticle, this));
+				UE_LOG(LogTemp, Log, TEXT("[LinkCharaParticle] Added to BattleParticles (Total: %d)"),
+					GameState->ParticleManager->BattleParticles.Num());
+
 				if (Direction == DIR_Left)
+				{
+					UE_LOG(LogTemp, Log, TEXT("[LinkCharaParticle] Setting UVScale to (-1, 1) for left direction"));
 					LinkedParticle->SetVariableVec2(FName("UVScale"), FVector2D(-1, 1));
+				}
+
 				LinkedParticle->SetBoundsScale(40000);
+				UE_LOG(LogTemp, Log, TEXT("[LinkCharaParticle] Set bounds scale to 40000"));
+
 				LinkedParticle->SetCustomDepthStencilValue(2);
-				break;
+				UE_LOG(LogTemp, Log, TEXT("[LinkCharaParticle] Set custom depth stencil to 2"));
+
+				// Additional debug info
+				UE_LOG(LogTemp, Warning, TEXT("[LinkCharaParticle] Final check - Component world location: %s"),
+					*LinkedParticle->GetComponentLocation().ToString());
 			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("[LinkCharaParticle] ✗ FAILED to spawn particle! SpawnSystemAttached returned NULL"));
+				UE_LOG(LogTemp, Error, TEXT("[LinkCharaParticle] Check if RootComponent is valid: %s"),
+					RootComponent ? TEXT("YES") : TEXT("NO"));
+			}
+
+			break;
+		}
+	}
+
+	if (!bFoundMatch)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[LinkCharaParticle] ✗ NO MATCH FOUND for tag: %s"), *Name.ToString());
+		UE_LOG(LogTemp, Error, TEXT("[LinkCharaParticle] Available particles:"));
+		for (FParticleStruct ParticleStruct : Player->CharaParticleData->ParticleStructs)
+		{
+			UE_LOG(LogTemp, Error, TEXT("  - %s (System: %s)"),
+				*ParticleStruct.Name.ToString(),
+				ParticleStruct.ParticleSystem ? *ParticleStruct.ParticleSystem->GetName() : TEXT("NULL"));
 		}
 	}
 }
